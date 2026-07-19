@@ -42,7 +42,7 @@ AMRITA_MCP_CLIENTS='["client1","client2"]'
 
 ### `agent` — Agent 会话
 
-`AgentSession` 是 AmritaCore 运行时在 NoneBot2 中的封装。继承自 `AmRuntime`，内置用量统计和会话安全机制。
+`AgentSession` 是 AmritaCore 运行时在 NoneBot2 中的封装。继承自 `AgentRuntime`，内置用量统计和会话安全机制。
 
 #### AgentSession
 
@@ -71,13 +71,14 @@ async def load_from(
 | 方法                               | 说明                                       |
 | ---------------------------------- | ------------------------------------------ |
 | `async with session as agent:`     | 上下文管理器，退出时自动聚合并写入用量统计 |
-| `await agent.chat(user_input)`     | 发送消息并获取 `ChatObject` 响应           |
-| `agent.get_chatobject(user_input)` | 获取底层 `ChatObject`（内部使用）          |
+| `agent.get_chatobject(user_input)` | 获取 `ChatObject` 实例                     |
 | `agent.get_backend()`              | 获取 `AmritaMemoryBackend` 实例            |
+
+> **注意**：`ChatObject` 需要通过 `begin()` 启动，然后使用 `async with` 或 `await` 等待执行完成，再通过 `io_stream` 或 `full_response()` 获取响应。
 
 **上下文管理器行为：** `__aexit__` 会遍历 session 期间所有 `ChatObject`，将 token 用量累加到当前日的 `InsightsModel` 和该用户的 `UserMetadataSchema`，然后写入数据库。整个过程受 `lock_by_session(session_id)` 保护。
 
-**使用示例：**
+**使用示例（流式响应）：**
 
 ```python
 from nonebot import on_command
@@ -92,8 +93,25 @@ async def handle_chat(event: Event):
         id_or_event=event,
         train={"role": "system", "content": "你是一个助手"},
     ) as agent:
-        response = await agent.chat("你好")
-        await matcher.send(response.content)
+        chat_obj = agent.get_chatobject("你好")
+        chat_obj.begin()
+        
+        # 使用 async with 管理 ChatObject 生命周期
+        async with chat_obj:
+            async for chunk in chat_obj.io_stream.get_response_generator():
+                content = chunk if isinstance(chunk, str) else chunk.get_content()
+                await matcher.send(content)
+```
+
+**使用示例（完整响应，非流式）：**
+
+```python
+async with await AgentSession.load_from(...) as agent:
+    chat_obj = agent.get_chatobject("你好")
+    chat_obj.begin()
+    await chat_obj
+    response = await chat_obj.full_response()
+    await matcher.send(response)
 ```
 
 #### SessionDepends
@@ -101,7 +119,7 @@ async def handle_chat(event: Event):
 NoneBot2 依赖注入辅助，自动从事件中提取用户 ID 并构造 `AgentSession`。
 
 ```python
-from nonebot_plugin_amrita.agent import SessionDepends
+from nonebot_plugin_amrita.agent import AgentSession, SessionDepends
 
 @matcher.handle()
 async def handle_chat(
@@ -112,13 +130,19 @@ async def handle_chat(
     )
 ):
     async with session as agent:
-        response = await agent.chat("你好")
-        await matcher.send(response.content)
+        chat_obj = agent.get_chatobject("你好")
+        chat_obj.begin()
+        async with chat_obj:
+            async for chunk in chat_obj.io_stream.get_response_generator():
+                content = chunk if isinstance(chunk, str) else chunk.get_content()
+                await matcher.send(content)
 ```
 
 > [!WARNING]
 > **AmritaCore 与 NoneBot2 的依赖注入系统互不兼容。**
 > AmritaCore 的 DI 属于 Agent 运行时内核层，与 NoneBot2 的 `Depends` 机制完全独立，不能混用。
+
+---
 
 ## `database` — 数据持久化
 
@@ -335,7 +359,7 @@ flowchart TD
     CACHE -->|LRU 未命中| EXC["UserDataExecutor(user_id)"]
     EXC --> DB[("Database")]
 
-    LOAD --> CHAT["agent.chat()"]
+    LOAD --> CHAT["agent.get_chatobject()"]
     CHAT --> CO["ChatObject (LLM 调用)"]
     CO -->|"×N"| COS["self.chat_objs"]
 
@@ -458,4 +482,4 @@ async with await AgentSession.load_from(
 
 #### Q: plugin metadata 描述是什么？
 
-本插件是 **library** 类型，不提供开箱即用的命令。你的插件需要自行导入 `AgentSession` 并在 matcher 中使用。
+本插件是 **library** 类型，不提供开箱即用的命令。你的插件需要自行导入 `AgentSession` 并在 matcher 中使用。AMRITA_MCP_CLIENTS='["client1","client2"]'
