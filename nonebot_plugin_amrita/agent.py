@@ -73,9 +73,12 @@ class AgentSession(AmRuntime):
             dm = CachedUserDataRepository()
             metadata = await dm.get_metadata(uni_id)
             for chat_object in self.chat_objs:
-                if chat_object.response.usage:
-                    add_usage(metadata, chat_object.response.usage)
-                    add_usage(insight, chat_object.response.usage)
+                if (
+                    chat_object._di_resp.response
+                    and chat_object._di_resp.response.usage
+                ):
+                    add_usage(metadata, chat_object._di_resp.response.usage)
+                    add_usage(insight, chat_object._di_resp.response.usage)
             await insight.save()
             self.chat_objs.clear()
 
