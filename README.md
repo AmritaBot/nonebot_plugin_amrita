@@ -4,6 +4,8 @@
 
 为 NoneBot2 提供 [AmritaCore](https://github.com/AmritaBot/AmritaCore) 集成支持。
 
+> 从 **AmritaBot 1.4.0** 开始，本插件正式成为 AmritaBot 的底层支持库，承载其核心运行时的 NoneBot2 集成。
+
 ---
 
 ## 安装
