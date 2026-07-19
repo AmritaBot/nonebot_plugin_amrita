@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import importlib.util
 import sys
 
 from nonebot import require
@@ -8,20 +9,23 @@ require("nonebot_plugin_localstore")
 require("nonebot_plugin_orm")
 
 
-from amrita_sense import logging
+
 from nonebot import get_driver, logger
 from nonebot import log as nb_log
 from nonebot.plugin import PluginMetadata
 
-logging.logger.remove()
+if importlib.util.find_spec("amrita") is None:
+    from amrita_sense import logging  # 此时AmritaBot没有接管Logger
 
-logging.logger_id.value = logging.logger.add(
-    sys.stdout,
-    level=0,
-    diagnose=False,
-    filter=nb_log.default_filter,
-    format=nb_log.default_format,
-)
+    logging.logger.remove()
+
+    logging.logger_id.value = logging.logger.add(
+        sys.stdout,
+        level=0,
+        diagnose=False,
+        filter=nb_log.default_filter,
+        format=nb_log.default_format,
+    )
 
 from amrita_core import ChatManager, ChatObject, minimal_init
 from amrita_core.config import (
@@ -30,7 +34,7 @@ from amrita_core.config import (
     FunctionConfig,
 )
 
-from . import agent, database, dirty, memory
+from . import agent, database, memory
 from . import config as conf_module
 from .config import Config
 from .database import InsightsModel, UserDataExecutor
@@ -95,6 +99,5 @@ __all__ = [
     "UserDataExecutor",
     "agent",
     "database",
-    "dirty",
     "memory",
 ]
