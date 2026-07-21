@@ -482,4 +482,4 @@ async with await AgentSession.load_from(
 
 #### Q: plugin metadata 描述是什么？
 
-本插件是 **library** 类型，不提供开箱即用的命令。你的插件需要自行导入 `AgentSession` 并在 matcher 中使用。AMRITA_MCP_CLIENTS='["client1","client2"]'
+本插件是 **library** 类型，不提供开箱即用的命令。你的插件需要自行导入 `AgentSession` 并在 matcher 中使用。
