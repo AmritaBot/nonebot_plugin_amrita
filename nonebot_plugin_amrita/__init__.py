@@ -9,7 +9,6 @@ require("nonebot_plugin_localstore")
 require("nonebot_plugin_orm")
 
 
-
 from nonebot import get_driver, logger
 from nonebot import log as nb_log
 from nonebot.plugin import PluginMetadata
@@ -42,10 +41,10 @@ from .memory import CachedUserDataRepository, MemorySchema
 
 __plugin_meta__ = PluginMetadata(
     name="LibAmritaCore",
-    description="Add AmritaCore (a high performance agent core) support to nonebot2",
+    description="适用于NoneBot2的高性能Agent框架（AmritaCore）支持库",
     usage="View `https://core.amritabot.com/zh` for details.",
     type="library",
-    homepage="https://github.com/LiteSuggarDEV/nonebot_plugin_amrita",
+    homepage="https://github.com/AmritaBot/nonebot_plugin_amrita",
     config=Config,
     supported_adapters=None,
 )

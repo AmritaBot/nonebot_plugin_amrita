@@ -71,21 +71,12 @@ def upgrade(name: str = "") -> None:
             info={"bind_key": "nonebot_plugin_amrita"},
         )
 
-    # 处理 amrita_user_metadata 表的索引：先检查索引是否存在再删除
-    # 获取表的所有索引
-    indexes = []
+    # 使用 CREATE INDEX IF NOT EXISTS（而非 batch_alter_table），
+    # 避免 SQLite batch 模式重建表时与模型 __table_args__ 索引冲突
     if "amrita_user_metadata" in table_names:
-        indexes = [idx["name"] for idx in inspector.get_indexes("amrita_user_metadata")]
-
-    with op.batch_alter_table("amrita_user_metadata", schema=None) as batch_op:
-        # 如果索引存在则删除
-        if "idx_amrita_user_id_last_active" in indexes:
-            batch_op.drop_index("idx_amrita_user_id_last_active")
-        # 创建索引
-        batch_op.create_index(
-            "idx_amrita_user_id_last_active",
-            ["user_id", "last_active"],
-            unique=False,
+        op.execute(
+            "CREATE INDEX IF NOT EXISTS idx_amrita_user_id_last_active "
+            "ON amrita_user_metadata (user_id, last_active)"
         )
 
     # 创建 amrita_memory_data 表（如果不存在）
@@ -129,25 +120,16 @@ def upgrade(name: str = "") -> None:
             info={"bind_key": "nonebot_plugin_amrita"},
         )
 
-    # 处理 amrita_memory_sessions 表的索引：先检查索引是否存在再删除
-    # 获取表的所有索引
-    memory_session_indexes = []
+    # 使用 CREATE INDEX IF NOT EXISTS（而非 batch_alter_table）
     if "amrita_memory_sessions" in table_names:
-        memory_session_indexes = [
-            idx["name"] for idx in inspector.get_indexes("amrita_memory_sessions")
-        ]
-
-    with op.batch_alter_table("amrita_memory_sessions", schema=None) as batch_op:
-        # 如果索引存在则删除
-        if "idx_am_sessions_created_at_time" in memory_session_indexes:
-            batch_op.drop_index("idx_am_sessions_created_at_time")
-        if "idx_am_sessions_user_id" in memory_session_indexes:
-            batch_op.drop_index("idx_am_sessions_user_id")
-        # 创建索引
-        batch_op.create_index(
-            "idx_am_sessions_created_at_time", ["created_at"], unique=False
+        op.execute(
+            "CREATE INDEX IF NOT EXISTS idx_am_sessions_created_at_time "
+            "ON amrita_memory_sessions (created_at)"
         )
-        batch_op.create_index("idx_am_sessions_user_id", ["user_id"], unique=False)
+        op.execute(
+            "CREATE INDEX IF NOT EXISTS idx_am_sessions_user_id "
+            "ON amrita_memory_sessions (user_id)"
+        )
 
     # ### end Alembic commands ###
 
@@ -164,39 +146,17 @@ def downgrade(name: str = "") -> None:
     inspector = sa.inspect(bind)
     tables = inspector.get_table_names()
 
-    # 处理 amrita_memory_sessions 表的索引：仅在表存在时删除索引
+    # 删除表（仅当存在时），先用 DROP INDEX IF EXISTS 清理索引
     if "amrita_memory_sessions" in tables:
-        # 获取表的所有索引
-        memory_session_indexes = [
-            idx["name"] for idx in inspector.get_indexes("amrita_memory_sessions")
-        ]
-        with op.batch_alter_table("amrita_memory_sessions", schema=None) as batch_op:
-            # 如果索引存在则删除
-            if "idx_am_sessions_user_id" in memory_session_indexes:
-                batch_op.drop_index("idx_am_sessions_user_id")
-            if "idx_am_sessions_created_at_time" in memory_session_indexes:
-                batch_op.drop_index("idx_am_sessions_created_at_time")
-
-    # 删除表（仅当存在时）
-    if "amrita_memory_sessions" in tables:
+        op.execute("DROP INDEX IF EXISTS idx_am_sessions_user_id")
+        op.execute("DROP INDEX IF EXISTS idx_am_sessions_created_at_time")
         op.drop_table("amrita_memory_sessions")
 
     if "amrita_memory_data" in tables:
         op.drop_table("amrita_memory_data")
 
-    # 处理 amrita_user_metadata 表的索引：仅在表存在时删除索引
     if "amrita_user_metadata" in tables:
-        # 获取表的所有索引
-        user_indexes = [
-            idx["name"] for idx in inspector.get_indexes("amrita_user_metadata")
-        ]
-        with op.batch_alter_table("amrita_user_metadata", schema=None) as batch_op:
-            # 如果索引存在则删除
-            if "idx_amrita_user_id_last_active" in user_indexes:
-                batch_op.drop_index("idx_amrita_user_id_last_active")
-
-    # 删除表（仅当存在时）
-    if "amrita_user_metadata" in tables:
+        op.execute("DROP INDEX IF EXISTS idx_amrita_user_id_last_active")
         op.drop_table("amrita_user_metadata")
 
     if "amrita_global_insights" in tables:
