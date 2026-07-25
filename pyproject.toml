@@ -1,6 +1,6 @@
 [project]
 name = "nonebot-plugin-amrita"
-version = "0.2.2"
+version = "0.2.3"
 description = "Next-Gent Agent frame AmritaCore support for NoneBot2"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -51,7 +51,7 @@ ignore = [
 typeCheckingMode = "standard"
 
 [tool.nonebot]
-plugins=[
+plugins = [
     "nonebot_plugin_amrita",
     "nonebot_plugin_localstore",
     "nonebot_plugin_orm",
@@ -61,7 +61,4 @@ plugins=[
 include = ["nonebot_plugin_amrita*"]
 
 [dependency-groups]
-dev = [
-    "nonebot2[fastapi]>=2.4.4",
-    "nonebot-plugin-orm[default]>=0.8.3",
-]
+dev = ["nonebot2[fastapi]>=2.4.4", "nonebot-plugin-orm[default]>=0.8.3"]

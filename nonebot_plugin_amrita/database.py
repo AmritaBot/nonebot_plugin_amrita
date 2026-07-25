@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import time
 from asyncio import Protocol
 from collections.abc import Sequence
@@ -340,9 +341,10 @@ class UserDataExecutor:
     async def __aexit__(self, exc_type, exc_value, traceback) -> None:
         try:
             await self._transaction.__aexit__(exc_type, exc_value, traceback)
-            if self._arg_session is None:
-                await self.session.__aexit__(exc_type, exc_value, traceback)
         finally:
+            with contextlib.suppress(BaseException):
+                if self._arg_session is None:
+                    await self.session.__aexit__(exc_type, exc_value, traceback)
             self._entered = False
             self._lock.async_release()
 
@@ -363,7 +365,7 @@ class UserDataExecutor:
         if self._user_metadata_temp is not None:
             return self._user_metadata_temp
         data: UserMetadata = await self._get_or_create_any(UserMetadata)
-        if data.last_active.date() != datetime.now().date():
+        if data.last_active is None or data.last_active.date() != datetime.now().date():
             data.last_active = datetime.now()
             data.tokens_input = 0
             data.tokens_output = 0
