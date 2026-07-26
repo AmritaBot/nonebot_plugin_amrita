@@ -9,7 +9,7 @@ from amrita_sense.weakcache import WeakValueLRUCache
 from nonebot.adapters import Event
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict as PydConf
-from pydantic import Field
+from pydantic import Field, field_validator
 from typing_extensions import final
 
 from .cache import LRUCache
@@ -51,6 +51,11 @@ class MemorySchema(BaseSchema):
         default_factory=MemoryModel, description="记忆数据的JSON格式"
     )
     extra_prompt: str = Field(default="", description="额外提示")
+
+    @field_validator("extra_prompt", mode="before")
+    @classmethod
+    def _coerce_extra_prompt(cls, v: str | None) -> str:
+        return v or ""
 
 
 class MemorySessionsSchema(PydanticBaseModel):  # 无脏追踪

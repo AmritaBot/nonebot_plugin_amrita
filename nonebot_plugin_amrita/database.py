@@ -355,10 +355,10 @@ class UserDataExecutor:
         obj = result.scalar_one_or_none()
         if obj is None:
             obj = model(user_id=self.user_id, **kwargs)
-            await (
-                self.session.flush()
-            )  # Ensure the new object is persisted before returning
-        self.session.add(obj)
+            self.session.add(obj)
+            await self.session.flush()  # Flush to get auto-generated ID and catch unique constraint violations early
+        else:
+            self.session.add(obj)
         return obj
 
     async def get_or_create_metadata(self) -> UserMetadata:
