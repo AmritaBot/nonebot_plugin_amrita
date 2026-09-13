@@ -149,15 +149,21 @@ class CachedUserDataRepository:
 
     async def update_memory_data(self, data: MemorySchema):
         uni_id = data.user_id
-        dirty = data.get_dirty_vars()
-        if not len(data.memory_json.get_dirty_vars()):
-            dirty.discard("memory_json")
+        # 访问 data.memory_json 本身会把 schema 的 memory_json 字段标记为脏，
+        # 因此内层数据的变更以内层模型的脏标记为准。
+        memory_dirty = bool(data.memory_json.get_dirty_vars())
+        # extra_prompt 与 memory_json 同属一行记录，必须一并写回，
+        # 否则仅修改自定义提示词（/prompt set）时会被静默丢弃。
+        extra_prompt_dirty = "extra_prompt" in data.get_dirty_vars()
+        if not (memory_dirty or extra_prompt_dirty):
             return
         async with self.make_lock(uni_id):
-            memory = data.memory_json.model_dump()
             async with UserDataExecutor(uni_id, with_for_update=True) as executor:
                 dt = await executor.get_or_create_memory()
-                dt.memory_json = memory
+                if memory_dirty:
+                    dt.memory_json = data.memory_json.model_dump()
+                if extra_prompt_dirty:
+                    dt.extra_prompt = data.extra_prompt
         data.clean()
         self._cached_memory[uni_id] = data
 
