@@ -22,10 +22,8 @@ class BaseSchema(BaseModel):
     Base Schema
     """
 
+    # 1.0 的 DirtyAwareModel 只认 dirty_exclude__，旧的 readonly__ 已失效
     dirty_exclude__: tuple = Field(
-        ("id", "user_id", "model_config"), exclude=True, init=False
-    )
-    readonly__: tuple = Field(
         ("id", "user_id", "model_config"), exclude=True, init=False
     )
 
@@ -149,11 +147,9 @@ class CachedUserDataRepository:
 
     async def update_memory_data(self, data: MemorySchema):
         uni_id = data.user_id
-        # 访问 data.memory_json 本身会把 schema 的 memory_json 字段标记为脏，
-        # 因此内层数据的变更以内层模型的脏标记为准。
+        # 内层模型的脏标记才是 memory_json 的真实变更来源
         memory_dirty = bool(data.memory_json.get_dirty_vars())
-        # extra_prompt 与 memory_json 同属一行记录，必须一并写回，
-        # 否则仅修改自定义提示词（/prompt set）时会被静默丢弃。
+        # extra_prompt 与 memory_json 同行，漏写会让 /prompt set 静默丢失
         extra_prompt_dirty = "extra_prompt" in data.get_dirty_vars()
         if not (memory_dirty or extra_prompt_dirty):
             return
@@ -161,7 +157,7 @@ class CachedUserDataRepository:
             async with UserDataExecutor(uni_id, with_for_update=True) as executor:
                 dt = await executor.get_or_create_memory()
                 if memory_dirty:
-                    dt.memory_json = data.memory_json.model_dump()
+                    dt.memory_json = data.memory_json.model_dump(mode="json")
                 if extra_prompt_dirty:
                     dt.extra_prompt = data.extra_prompt
         data.clean()

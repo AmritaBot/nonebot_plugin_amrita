@@ -26,11 +26,10 @@ if importlib.util.find_spec("amrita") is None:
         format=nb_log.default_format,
     )
 
-from amrita_core import ChatManager, ChatObject, minimal_init
+from amrita_core import ChatManager, ChatObject, get_config, load_amrita, set_config
 from amrita_core.config import (
     AmritaConfig,
     CookieConfig,
-    FunctionConfig,
 )
 
 from . import agent, database, memory
@@ -60,18 +59,21 @@ def replace_config(config: Config):
 @get_driver().on_startup
 async def init():
     _config = conf_module._config
-    am_cookie_conf = CookieConfig(
-        enable_cookie=_config.amrita_cookie_enable, cookie=_config.amrita_cookie
-    )
-    am_function_conf = FunctionConfig(
-        agent_mcp_client_enable=_config.amrita_mcp_enable,
-        agent_mcp_server_scripts=_config.amrita_mcp_clients,
-    )
-    am_conf = AmritaConfig(
-        cookie=am_cookie_conf,
-        function_config=am_function_conf,
-    )
-    await minimal_init(am_conf)
+    try:
+        am_conf = get_config()
+    except RuntimeError:
+        # 宿主尚未装配 AmritaCore：本插件作为独立库接管初始化
+        am_conf = AmritaConfig()
+    # 只在显式开启时叠加，不覆盖宿主已配置的 cookie / MCP，也不重置 llm 与 builtin
+    if _config.amrita_cookie_enable:
+        am_conf.cookie = CookieConfig(enable_cookie=True, cookie=_config.amrita_cookie)
+    if _config.amrita_mcp_enable:
+        am_conf.function_config.agent_mcp_client_enable = True
+        am_conf.function_config.agent_mcp_server_scripts = list(
+            _config.amrita_mcp_clients
+        )
+    set_config(am_conf)
+    await load_amrita()
 
 
 @get_driver().on_shutdown

@@ -1,3 +1,4 @@
+import contextlib
 import typing
 
 import typing_extensions
@@ -73,12 +74,11 @@ class AgentSession(AmRuntime):
             dm = CachedUserDataRepository()
             metadata = await dm.get_metadata(uni_id)
             for chat_object in self.chat_objs:
-                if (
-                    chat_object._di_resp.response
-                    and chat_object._di_resp.response.usage
-                ):
-                    add_usage(metadata, chat_object._di_resp.response.usage)
-                    add_usage(insight, chat_object._di_resp.response.usage)
+                # data 在记忆未装载时会抛 RuntimeError（例如运行早期即失败）
+                with contextlib.suppress(RuntimeError):
+                    if (usage := chat_object.data.usage) is not None:
+                        add_usage(metadata, usage)
+                        add_usage(insight, usage)
             await insight.save()
             self.chat_objs.clear()
 

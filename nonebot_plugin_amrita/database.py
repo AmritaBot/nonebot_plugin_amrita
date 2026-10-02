@@ -226,7 +226,7 @@ class Memory(Model, HasUserIDModel):
     )
     memory_json: Mapped[dict[str, Any]] = mapped_column(
         JSON,
-        default=MemoryModel().model_dump(),
+        default=MemoryModel().model_dump(mode="json"),
         nullable=False,
         server_default=text("'{}'"),
     )
@@ -400,7 +400,7 @@ class UserDataExecutor:
 
     async def add_session(self, data: MemoryModel):
         stmt = insert(MemorySessions).values(
-            user_id=self.user_id, data=data.model_dump()
+            user_id=self.user_id, data=data.model_dump(mode="json")
         )
         await self.session.execute(stmt)
 

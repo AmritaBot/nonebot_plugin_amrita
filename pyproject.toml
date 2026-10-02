@@ -1,12 +1,12 @@
 [project]
 name = "nonebot-plugin-amrita"
-version = "0.3.0"
+version = "0.4.0"
 description = "Next-Gent Agent frame AmritaCore support for NoneBot2"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "aiologic>=0.16.0",
-    "amrita-core>=0.12.0",
+    "amrita-core>=1.0.0,<2.0.0",
     "nonebot-plugin-localstore>=0.7.4",
     "nonebot-plugin-orm>=0.8.3",
     "nonebot2>=2.4.4",

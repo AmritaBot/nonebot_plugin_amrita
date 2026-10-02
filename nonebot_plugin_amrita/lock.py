@@ -21,7 +21,7 @@ def database_lock(*args: Hashable) -> aiologic.Lock:
 
 
 def lock_by_session(session_id: str) -> aiologic.Lock:
-    if (lock := _database_lock.get(session_id)) is None:
+    if (lock := _session_lock.get(session_id)) is None:
         lock = aiologic.Lock()
         _session_lock.put(session_id, lock)
     return lock
