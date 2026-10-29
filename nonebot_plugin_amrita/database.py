@@ -248,6 +248,10 @@ class MemorySessions(Model):
             JSON, nullable=False, server_default=text("'{}'")
         )
     )
+    # 会话标签：归档时由模型生成的一行短摘要，也可由 /session rename 手改。
+    # 旧数据没有这一列，保持 NULL 以区分「从未生成过」与「生成失败」，
+    # 展示侧回落到 data.abstract 再回落到首条用户消息。
+    tag: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
     __table_args__ = (
         Index("idx_am_sessions_user_id", "user_id"),
         Index("idx_am_sessions_created_at_time", "created_at"),
@@ -286,7 +290,14 @@ class MemorySessions(Model):
     ) -> Sequence[Self]:
         async with database_lock(uni_user_id) if not no_lock else NULL:
             await cls._expire(session, uni_user_id, keep_count=20)
-            stmt = select(cls).where(cls.user_id == uni_user_id)
+            #  顺序必须是显式的：/session list 的编号、use / del / rename 都按返回
+            #  下标定位，而在 SQLite 上 id 会回收复用，只靠隐式 rowid 顺序不稳定。
+            #  created_at 相同（同一秒内连归档）时再用 id 兜底。
+            stmt = (
+                select(cls)
+                .where(cls.user_id == uni_user_id)
+                .order_by(cls.created_at.asc(), cls.id.asc())
+            )
             data = (await session.execute(stmt)).scalars().all()
             return data
 
@@ -398,11 +409,51 @@ class UserDataExecutor:
         ]
         await self.session.execute(stmt)
 
-    async def add_session(self, data: MemoryModel):
-        stmt = insert(MemorySessions).values(
-            user_id=self.user_id, data=data.model_dump(mode="json")
+    async def add_session(
+        self, data: MemoryModel, tag: str | None = None
+    ) -> tuple[int, float]:
+        """插入一条归档，返回 ``(id, created_at)``。
+
+        ``created_at`` 显式取值而不是交给列默认值：写入标签时要一并核对它，
+        否则 id 被回收复用后会把旧会话的标签写到新行上（见 ``update_session_tag``）。
+        """
+        created_at = time.time()
+        stmt = (
+            insert(MemorySessions)
+            .values(
+                user_id=self.user_id,
+                created_at=created_at,
+                data=data.model_dump(mode="json"),
+                tag=tag,
+            )
+            .returning(MemorySessions.id)
         )
-        await self.session.execute(stmt)
+        new_id: int = (await self.session.execute(stmt)).scalar_one()
+        return new_id, created_at
+
+    async def update_session_tag(
+        self, session_id: int, tag: str, created_at: float | None = None
+    ) -> bool:
+        """见 ``MemorySessions``：写归档标签，条件见方法内注释。"""
+        conditions = [
+            MemorySessions.id == session_id,
+            MemorySessions.tag.is_(None),
+        ]
+        if created_at is not None:
+            conditions.append(MemorySessions.created_at == created_at)
+        stmt = update(MemorySessions).where(*conditions).values(tag=tag)
+        result = await self.session.execute(stmt)
+        return bool(result.rowcount)
+
+    async def rename_session(self, session_id: int, tag: str) -> bool:
+        """强制改写归档标签（用户手动重命名），不校验 ``tag IS NULL``。"""
+        stmt = (
+            update(MemorySessions)
+            .where(MemorySessions.id == session_id)
+            .values(tag=tag)
+        )
+        result = await self.session.execute(stmt)
+        return bool(result.rowcount)
 
     @staticmethod
     async def get_top_users(limit: int = 10) -> Sequence[UserMetadata]:

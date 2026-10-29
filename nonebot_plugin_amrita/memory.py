@@ -64,6 +64,9 @@ class MemorySessionsSchema(PydanticBaseModel):  # 无脏追踪
     data: MemoryModel = Field(
         default_factory=MemoryModel, description="会话数据的JSON格式"
     )
+    tag: str | None = Field(
+        default=None, description="会话标签（归档时生成，可由 /session rename 改写）"
+    )
 
 
 @final
@@ -132,6 +135,42 @@ class CachedUserDataRepository:
                 sessions = await exc.get_or_load_sessions()
                 data = [MemorySessionsSchema.model_validate(s) for s in sessions]
             return data
+
+    async def update_session_tag(
+        self,
+        owner: Event | str,
+        session_id: int,
+        tag: str,
+        created_at: float | None = None,
+    ) -> bool:
+        """写入归档标签（条件写：仅在 ``tag IS NULL`` 且行未被回收时生效）。
+
+        归档行与 ``memory_json`` 不在同一行，所以不需要碰 ``_cached_memory``；
+        走 ``UserDataExecutor`` 是为了复用 ``database_lock(owner)``，与
+        ``add_session`` 串行，避免 SQLite 上的交叉写入。
+        """
+        uni_id = self.make_id(owner)
+        async with self.make_lock(uni_id):
+            async with UserDataExecutor(uni_id) as exc:
+                return await exc.update_session_tag(session_id, tag, created_at)
+
+    async def rename_session(
+        self, owner: Event | str, session_id: int, tag: str
+    ) -> bool:
+        """改写归档标签（用户手动，覆盖已有值）。"""
+        uni_id = self.make_id(owner)
+        async with self.make_lock(uni_id):
+            async with UserDataExecutor(uni_id) as exc:
+                return await exc.rename_session(session_id, tag)
+
+    async def add_session(
+        self, owner: Event | str, data: MemoryModel, tag: str | None = None
+    ) -> tuple[int, float]:
+        """插入一条归档并返回 ``(id, created_at)``，供标签回填定位该行。"""
+        uni_id = self.make_id(owner)
+        async with self.make_lock(uni_id):
+            async with UserDataExecutor(uni_id) as exc:
+                return await exc.add_session(data, tag)
 
     async def update_metadata(self, data: UserMetadataSchema) -> None:
         uni_id = data.user_id
