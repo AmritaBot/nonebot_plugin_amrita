@@ -141,7 +141,7 @@ class CachedUserDataRepository:
         owner: Event | str,
         session_id: int,
         tag: str,
-        created_at: float | None = None,
+        created_at: float,
     ) -> bool:
         """写入归档标签（条件写：仅在 ``tag IS NULL`` 且行未被回收时生效）。
 
@@ -155,13 +155,20 @@ class CachedUserDataRepository:
                 return await exc.update_session_tag(session_id, tag, created_at)
 
     async def rename_session(
-        self, owner: Event | str, session_id: int, tag: str
+        self,
+        owner: Event | str,
+        session_id: int,
+        tag: str,
+        created_at: float | None = None,
     ) -> bool:
-        """改写归档标签（用户手动，覆盖已有值）。"""
+        """改写归档标签（用户手动，覆盖已有值）。
+
+        传入 ``created_at`` 时会额外校验该行未被回收复用。
+        """
         uni_id = self.make_id(owner)
         async with self.make_lock(uni_id):
             async with UserDataExecutor(uni_id) as exc:
-                return await exc.rename_session(session_id, tag)
+                return await exc.rename_session(session_id, tag, created_at)
 
     async def add_session(
         self, owner: Event | str, data: MemoryModel, tag: str | None = None

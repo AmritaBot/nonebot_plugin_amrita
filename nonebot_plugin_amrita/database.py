@@ -6,7 +6,7 @@ from asyncio import Protocol
 from collections.abc import Sequence
 from contextlib import nullcontext
 from datetime import datetime, timedelta
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 from aiologic import Lock
 from amrita_core.types import (
@@ -19,6 +19,7 @@ from pydantic import Field
 from sqlalchemy import (
     JSON,
     BigInteger,
+    CursorResult,
     DateTime,
     Float,
     ForeignKey,
@@ -46,6 +47,20 @@ def make_id(obj: Event | str) -> str:
         if isinstance(obj, str)
         else f"{obj.get_event_name()}_{obj.get_session_id()}"
     )
+
+
+MAX_TAG_LENGTH = 64
+
+
+def _clip_tag(tag: str | None) -> str | None:
+    """标签超过列宽时截断。
+
+    SQLite 不校验 VARCHAR 长度，但换到严格方言会直接拒写；模型生成的摘要
+    长度不可控，这里统一收口，避免归档因为标签过长而失败。
+    """
+    if tag is None or len(tag) <= MAX_TAG_LENGTH:
+        return tag
+    return tag[:MAX_TAG_LENGTH]
 
 
 _expire_last_check_at: datetime | None = None
@@ -272,7 +287,9 @@ class MemorySessions(Model):
             stmt = (
                 select(cls.id)
                 .where(cls.user_id == user_id)
-                .order_by(cls.created_at.desc())
+                #  与 get 的排序保持同一口径：并列时用 id 兜底，否则保留边界上
+                #  可能删掉 list 顺序里本该留下的那条。
+                .order_by(cls.created_at.desc(), cls.id.desc())
                 .offset(keep_count)  # 跳过要保留的数量，获取需要删除的记录
             )
 
@@ -424,7 +441,7 @@ class UserDataExecutor:
                 user_id=self.user_id,
                 created_at=created_at,
                 data=data.model_dump(mode="json"),
-                tag=tag,
+                tag=_clip_tag(tag),
             )
             .returning(MemorySessions.id)
         )
@@ -432,27 +449,43 @@ class UserDataExecutor:
         return new_id, created_at
 
     async def update_session_tag(
+        self, session_id: int, tag: str, created_at: float
+    ) -> bool:
+        """见 ``MemorySessions``：写归档标签，条件见方法内注释。
+
+        ``created_at`` 必填：id 在 SQLite 上会被回收复用，只按 id 写会把旧
+        会话的标签落到新行上。``user_id`` 一并进谓词，避免调用方传入他人
+        的 id 时改到别人的归档。
+        """
+        stmt = (
+            update(MemorySessions)
+            .where(
+                MemorySessions.id == session_id,
+                MemorySessions.user_id == self.user_id,
+                MemorySessions.tag.is_(None),
+                MemorySessions.created_at == created_at,
+            )
+            .values(tag=_clip_tag(tag))
+        )
+        result = cast(CursorResult[Any], await self.session.execute(stmt))
+        return bool(result.rowcount)
+
+    async def rename_session(
         self, session_id: int, tag: str, created_at: float | None = None
     ) -> bool:
-        """见 ``MemorySessions``：写归档标签，条件见方法内注释。"""
+        """强制改写归档标签（用户手动重命名），不校验 ``tag IS NULL``。
+
+        手动路径不要求时间戳（用户明确指向列表里的某一行），但调用方手里
+        有 ``created_at`` 时建议一并传入，避免 id 回收后改到新行。
+        """
         conditions = [
             MemorySessions.id == session_id,
-            MemorySessions.tag.is_(None),
+            MemorySessions.user_id == self.user_id,
         ]
         if created_at is not None:
             conditions.append(MemorySessions.created_at == created_at)
-        stmt = update(MemorySessions).where(*conditions).values(tag=tag)
-        result = await self.session.execute(stmt)
-        return bool(result.rowcount)
-
-    async def rename_session(self, session_id: int, tag: str) -> bool:
-        """强制改写归档标签（用户手动重命名），不校验 ``tag IS NULL``。"""
-        stmt = (
-            update(MemorySessions)
-            .where(MemorySessions.id == session_id)
-            .values(tag=tag)
-        )
-        result = await self.session.execute(stmt)
+        stmt = update(MemorySessions).where(*conditions).values(tag=_clip_tag(tag))
+        result = cast(CursorResult[Any], await self.session.execute(stmt))
         return bool(result.rowcount)
 
     @staticmethod
