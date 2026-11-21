@@ -422,7 +422,11 @@ class UserDataExecutor:
         return data
 
     async def remove_session(self, *id: int):
-        stmt = delete(MemorySessions).where(MemorySessions.id.in_(id))
+        # user_id 一并进谓词：调用方只传 id 时也不能删到别人的归档
+        stmt = delete(MemorySessions).where(
+            MemorySessions.id.in_(id),
+            MemorySessions.user_id == self.user_id,
+        )
         self._user_sessions_temp = [
             session
             for session in self._user_sessions_temp or []
