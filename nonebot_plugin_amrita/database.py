@@ -21,7 +21,7 @@ from sqlalchemy import (
     BigInteger,
     CursorResult,
     DateTime,
-    Float,
+    Double,
     ForeignKey,
     Index,
     Integer,
@@ -257,7 +257,7 @@ class MemorySessions(Model):
         ForeignKey(f"{UserMetadata.__tablename__}.user_id", ondelete="CASCADE"),
         nullable=False,
     )
-    created_at: Mapped[float] = mapped_column(Float, default=time.time, nullable=False)
+    created_at: Mapped[float] = mapped_column(Double, default=time.time, nullable=False)
     data: Mapped[dict[str, Any]] = (
         mapped_column(  # Amrita的Session其实跟像一种“归档”，所以在设计时没有考虑需要修改的场景。
             JSON, nullable=False, server_default=text("'{}'")
@@ -418,7 +418,11 @@ class UserDataExecutor:
         return data
 
     async def remove_session(self, *id: int):
-        stmt = delete(MemorySessions).where(MemorySessions.id.in_(id))
+        # user_id 一并进谓词：调用方只传 id 时也不能删到别人的归档
+        stmt = delete(MemorySessions).where(
+            MemorySessions.id.in_(id),
+            MemorySessions.user_id == self.user_id,
+        )
         self._user_sessions_temp = [
             session
             for session in self._user_sessions_temp or []
