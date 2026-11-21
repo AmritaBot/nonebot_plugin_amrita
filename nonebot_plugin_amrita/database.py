@@ -29,6 +29,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     delete,
+    func,
     insert,
     select,
     text,
@@ -39,6 +40,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from typing_extensions import Self
 
 from .lock import database_lock
+
+# MySQL 的 FLOAT 只有 32 位，1.7e9 附近的时间戳误差可达数十秒，不能按等值比较
+_CREATED_AT_TOLERANCE = 300.0
 
 
 def make_id(obj: Event | str) -> str:
@@ -463,7 +467,8 @@ class UserDataExecutor:
                 MemorySessions.id == session_id,
                 MemorySessions.user_id == self.user_id,
                 MemorySessions.tag.is_(None),
-                MemorySessions.created_at == created_at,
+                func.abs(MemorySessions.created_at - created_at)
+                <= _CREATED_AT_TOLERANCE,
             )
             .values(tag=_clip_tag(tag))
         )
@@ -483,7 +488,10 @@ class UserDataExecutor:
             MemorySessions.user_id == self.user_id,
         ]
         if created_at is not None:
-            conditions.append(MemorySessions.created_at == created_at)
+            conditions.append(
+                func.abs(MemorySessions.created_at - created_at)
+                <= _CREATED_AT_TOLERANCE
+            )
         stmt = update(MemorySessions).where(*conditions).values(tag=_clip_tag(tag))
         result = cast(CursorResult[Any], await self.session.execute(stmt))
         return bool(result.rowcount)
