@@ -21,7 +21,7 @@ from sqlalchemy import (
     BigInteger,
     CursorResult,
     DateTime,
-    Float,
+    Double,
     ForeignKey,
     Index,
     Integer,
@@ -29,7 +29,6 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     delete,
-    func,
     insert,
     select,
     text,
@@ -40,9 +39,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from typing_extensions import Self
 
 from .lock import database_lock
-
-# MySQL 的 FLOAT 只有 32 位，1.7e9 附近的时间戳误差可达数十秒，不能按等值比较
-_CREATED_AT_TOLERANCE = 300.0
 
 
 def make_id(obj: Event | str) -> str:
@@ -261,7 +257,7 @@ class MemorySessions(Model):
         ForeignKey(f"{UserMetadata.__tablename__}.user_id", ondelete="CASCADE"),
         nullable=False,
     )
-    created_at: Mapped[float] = mapped_column(Float, default=time.time, nullable=False)
+    created_at: Mapped[float] = mapped_column(Double, default=time.time, nullable=False)
     data: Mapped[dict[str, Any]] = (
         mapped_column(  # Amrita的Session其实跟像一种“归档”，所以在设计时没有考虑需要修改的场景。
             JSON, nullable=False, server_default=text("'{}'")
@@ -471,8 +467,7 @@ class UserDataExecutor:
                 MemorySessions.id == session_id,
                 MemorySessions.user_id == self.user_id,
                 MemorySessions.tag.is_(None),
-                func.abs(MemorySessions.created_at - created_at)
-                <= _CREATED_AT_TOLERANCE,
+                MemorySessions.created_at == created_at,
             )
             .values(tag=_clip_tag(tag))
         )
@@ -492,10 +487,7 @@ class UserDataExecutor:
             MemorySessions.user_id == self.user_id,
         ]
         if created_at is not None:
-            conditions.append(
-                func.abs(MemorySessions.created_at - created_at)
-                <= _CREATED_AT_TOLERANCE
-            )
+            conditions.append(MemorySessions.created_at == created_at)
         stmt = update(MemorySessions).where(*conditions).values(tag=_clip_tag(tag))
         result = cast(CursorResult[Any], await self.session.execute(stmt))
         return bool(result.rowcount)
